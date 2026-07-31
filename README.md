@@ -147,7 +147,6 @@ Plusieurs évolutions sont envisagées afin de rendre cette solution plus simple
 - Ajouter un aperçu des signatures générées ainsi que le nombre total de signatures avant leur génération ou leur envoi.
 - Intégrer un assistant basé sur l'intelligence artificielle pour guider les utilisateurs dans l'utilisation de l'application et les assister lors de la configuration des services Google.
 - Détecter automatiquement les erreurs de connexion (identifiants expirés, jetons OAuth invalides ou accès refusés) et fournir des explications compréhensibles ainsi que les étapes à suivre pour résoudre le problème.
-- Étendre la solution afin de prendre en charge d'autres plateformes de messagerie et de stockage cloud.
 
 #  Auteur
 
