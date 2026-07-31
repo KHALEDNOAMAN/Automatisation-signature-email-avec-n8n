@@ -1,0 +1,5 @@
+n8n_data/
+n8n_data - Copie/
+.env
+*.db
+*.sqlite

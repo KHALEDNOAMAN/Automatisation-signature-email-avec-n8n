@@ -1,0 +1,1697 @@
+{
+  "name": "Automatisation Signature Email",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// On prépare la liste des résultats\nconst output = [];\n\n// --- On récupère le code HTML du modèle depuis les noeuds précédents ---\nconst model1Html = $node[\"Extrait du fichier Model_M1_Normal\"].json[\"Code_Model_1\"];\nconst model2Html = $node[\"Extrait du fichier Model_M2_Normal\"].json[\"Code_Model_2\"];\nconst model3Html = $node[\"Extrait du fichier Model_M3_Normal\"].json[\"Code_Model_3\"];\nconst model4Html = $node[\"Extrait du fichier Model_M4_Normal\"].json[\"Code_Model_4\"];\n\n// --- Boucle sur toutes les lignes du Google Sheet (déjà filtrées par Switch) ---\nfor (let i = 0; i < items.length; i++) {\n  const data = items[i].json;\n\n  // --- Récupération des colonnes ---\n  const photo = data[\"photo_url\"];\n  const Name = data[\"nom-complet\"];\n  const poste = data[\"poste\"];\n  const telephone = data[\"telephone\"];\n  const whatsapp =  data[\"whatsapp\"];\n  const email = data[\"email\"];\n  const modele = data[\"modele\"] ;\n\n  let html = \"\";\n\n  // --- Switch selon le modèle ---\n  switch (modele) {\n    case \"Model 1\":\n      html = model1Html;\n      break;\n    case \"Model 2\":\n      html = model2Html;\n      break;\n    case \"Model 3\":\n      html = model3Html;\n      break;\n    case \"Model 4\":\n      html = model4Html;\n      break;\n    default:\n      html = `⚠️ ${Name} : modèle non reconnu (\"${modele}\")`;\n  }\n\n  // --- Remplacement des variables dynamiques ---\n  html = html\n    .replaceAll(\"${nom_personnel}\", Name)\n    .replaceAll(\"${telephone}\", telephone)\n    .replaceAll(\"${whatsapp}\", whatsapp)\n    .replaceAll(\"${email}\", email)\n    .replaceAll(\"${poste}\", poste)\n    .replaceAll(\"${photo_url}\", photo);\n\n  // --- Ajout du résultat final ---\n  output.push({\n    json: {\n      ligne: i + 1,\n      Name,\n      modele,\n      signatureHTML: html\n    }\n  });\n}\n\n// --- On retourne toutes les signatures ---\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        0
+      ],
+      "id": "6a3b37c3-746e-4a1b-9f73-c0eb3640415c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On récupère les données de chaque signature\nconst itemsOut = [];\n\nfor (const item of items) {\n  const nom = item.json.Name || \"SansNom\";\n  const nomFichier = nom.replace(/\\s+/g, \"\") + \".html\"; // supprime les espaces\n  const contenuHTML = item.json.signatureHTML || \"\";\n\n  itemsOut.push({\n    json: {\n      nomFichier,\n      nom,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuHTML, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: nomFichier,\n      },\n    },\n  });\n}\n\nreturn itemsOut;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        0
+      ],
+      "id": "265ba979-3385-45f0-ae4a-37325ff3560b",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "let contenuTotal = `\n<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Signatures Materauto</title>\n<style>\n  body {\n    font-family: Arial, sans-serif;\n    margin: 20px;\n    background-color: #1e1e1e;\n    color: #ddd;\n  }\n  h1 { color: #fff; }\n  .card {\n    background: #2b2b2b;\n    border-radius: 10px;\n    padding: 20px;\n    margin-bottom: 20px;\n    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n  }\n  .card h2 { font-size: 18px; color: #fff; margin-bottom: 10px; }\n  .info { color: #f88; font-weight: bold; margin-bottom: 8px; }\n  .filename { font-size: 14px; color: #ccc; margin-bottom: 10px; }\n  .btn {\n    display: inline-block;\n    background: #444;\n    color: #fff;\n    border: 1px solid #666;\n    border-radius: 5px;\n    padding: 6px 14px;\n    text-decoration: none;\n    cursor: pointer;\n    font-size: 14px;\n  }\n  .btn:hover { background: #666; }\n  .preview {\n    margin-top: 15px;\n    background: #fff;\n    color: #000;\n    border-radius: 6px;\n    padding: 10px;\n  }\n  .badge {\n    display:inline-block;\n    width:28px;height:28px;\n    border-radius:6px;\n    background:#cfcfcf;color:#000;\n    text-align:center;line-height:28px;margin-right:10px;font-weight:bold;\n  }\n</style>\n</head>\n<body>\n<h1>\\uD83D\\uDCC4 Liste des signatures MTO</h1>\n<input type=\"text\" id=\"searchBar\" placeholder=\"🔍 Rechercher une personne...\"\n       oninput=\"searchCards()\"\n       style=\"width:80%; padding:10px; border-radius:6px; border:1px solid #555;\n              background:#2b2b2b; color:#fff; margin-bottom:20px; font-size:16px;\">\n<div id=\"noResults\" style=\"\n  display:none;\n  color:#ff6666;\n  font-size:18px;\n  font-weight:bold;\n  margin-top:10px;\n\">\n  ❌ Aucune signature / email correspondant\n</div>\n\n\n<p>Chaque carte correspond à une signature. Clique sur “Télécharger” pour récupérer la signature au format HTML.</p>\n<hr>\n<script>\n  // télécharge un fichier HTML à partir d'un nom et d'un contenu (string)\n  function downloadHTML(name, content) {\n    const blob = new Blob([content], { type: 'text/html' });\n    const link = document.createElement('a');\n    link.href = URL.createObjectURL(blob);\n    link.download = name + '.html';\n    document.body.appendChild(link);\n    link.click();\n    link.remove();\n  }\n  //code pour faire une recherche\n function searchCards() {\n  const input = document.getElementById(\"searchBar\").value.toLowerCase();\n  const cards = document.querySelectorAll(\".card\");\n  let visibleCount = 0;\n\n  cards.forEach(card => {\n    const text = card.innerText.toLowerCase();\n    const match = text.includes(input);\n\n    card.style.display = match ? \"block\" : \"none\";\n\n    if (match) visibleCount++;\n  });\n\n  // si aucune carte n'est visible → afficher le message\n  document.getElementById(\"noResults\").style.display =\n    visibleCount === 0 ? \"block\" : \"none\";\n}\n\n\n  // lit les data-attributes du bouton: data-name et data-content (base64),\n  // décode le contenu et déclenche downloadHTML\n  function downloadFromData(btn) {\n    try {\n      const name = btn.getAttribute('data-name') || 'signature';\n      const b64 = btn.getAttribute('data-content') || '';\n      // atob décode base64 vers chaine UTF-8 byte seq ; on convertit correctement en UTF-8:\n      // méthode simple: decode via atob puis construire string avec percent-encoding\n      const binaryStr = atob(b64);\n      // convertir binaryStr (latin1) en UTF-8 string\n      let utf8str = decodeURIComponent(Array.prototype.map.call(binaryStr, function(c){\n        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);\n      }).join(''));\n      downloadHTML(name, utf8str);\n    } catch (e) {\n      alert('Erreur lors du téléchargement : ' + e.message);\n      console.error(e);\n    }\n  }\n</script>\n`;\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const nom = item.json.nom || item.json.nomFichier || \"Inconnu\";\n  const safeName = nom.replace(/\\s+/g, \"_\").replace(/[\"'<>]/g, \"_\");\n  const fileName = item.json.nomFichier || safeName + \".html\";\n  const html = Buffer.from(item.binary.data.data, \"base64\").toString(\"utf-8\");\n  // encode le HTML en base64 pour le stocker dans data-content (sécurisé pour attribut)\n  const b64 = Buffer.from(html, \"utf-8\").toString(\"base64\");\n\n  contenuTotal += `\n  <div class=\"card\">\n    <div style=\"display:flex; align-items:center; justify-content:space-between;\">\n      <div style=\"display:flex; align-items:center;\">\n        <div class=\"badge\">${i + 1}</div>\n        <div>\n          <div style=\"color:#f88; font-weight:bold; margin-bottom:6px;\">données</div>\n          <div class=\"filename\">\n            Nom de fichier: <strong>${fileName}</strong><br>\n            Type MIME : <span>texte/html</span>\n          </div>\n        </div>\n      </div>\n      <div>\n        <button class=\"btn\" data-name=\"${safeName}\" data-content=\"${b64}\" onclick=\"downloadFromData(this)\">Télécharger</button>\n      </div>\n    </div>\n    <div class=\"preview\">${html}</div>\n  </div>\n  `;\n}\n\ncontenuTotal += `\n</body>\n</html>\n`;\n\n// retourne le HTML en binaire pour le nœud suivant\nreturn [\n  {\n    json: {\n      message:\n        \"Signatures affichées sous forme de cartes avec bouton Télécharger\",\n      totalFiles: items.length,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuTotal, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: \"Signatures_Materauto.html\",\n      },\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        0
+      ],
+      "id": "45ef8693-525e-4b77-9498-828667c3f74e",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "operation": "compress",
+        "fileName": "data",
+        "binaryPropertyOutput": "Signature_email_complete_nonBloque"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        2704,
+        0
+      ],
+      "id": "b055a267-231c-4c01-b5ff-060bc86bf418",
+      "name": "Compression"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On prépare la liste des résultats\nconst output = [];\n\n// --- On récupère le code HTML du modèle depuis les noeuds précédents ---\nconst model1Html = $node[\"Extrait du fichier Model_M1_MatezAuto\"].json[\"Code_Model_1\"];\nconst model2Html = $node[\"Extrait du fichier Model_M2_MatezAuto\"].json[\"Code_Model_2\"];\nconst model3Html = $node[\"Extrait du fichier Model_M3_MatezAuto\"].json[\"Code_Model_3\"];\nconst model4Html = $node[\"Extrait du fichier Model_M4_MatezAuto\"].json[\"Code_Model_4\"];\n\n// --- Boucle sur toutes les lignes du Google Sheet (déjà filtrées par Switch) ---\nfor (let i = 0; i < items.length; i++) {\n  const data = items[i].json;\n\n  // --- Récupération des colonnes ---\n  const photo = data[\"photo_url\"];\n  const Name = data[\"nom-complet\"];\n  const poste = data[\"poste\"];\n  const telephone = data[\"telephone\"];\n  const whatsapp =  data[\"whatsapp\"];\n  const email = data[\"email\"];\n  const modele = data[\"modele\"] ;\n\n  let html = \"\";\n\n  // --- Switch selon le modèle ---\n  switch (modele) {\n    case \"Model 1\":\n      html = model1Html;\n      break;\n    case \"Model 2\":\n      html = model2Html;\n      break;\n    case \"Model 3\":\n      html = model3Html;\n      break;\n    case \"Model 4\":\n      html = model4Html;\n      break;\n    default:\n      html = `⚠️ ${Name} : modèle non reconnu (\"${modele}\")`;\n  }\n\n  // --- Remplacement des variables dynamiques ---\n  html = html\n    .replaceAll(\"${nom_personnel}\", Name)\n    .replaceAll(\"${telephone}\", telephone)\n    .replaceAll(\"${whatsapp}\", whatsapp)\n    .replaceAll(\"${email}\", email)\n    .replaceAll(\"${poste}\", poste)\n    .replaceAll(\"${photo_url}\", photo);\n\n  // --- Ajout du résultat final ---\n  output.push({\n    json: {\n      ligne: i + 1,\n      Name,\n      modele,\n      signatureHTML: html\n    }\n  });\n}\n\n// --- On retourne toutes les signatures ---\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        576
+      ],
+      "id": "1794b873-823d-49b8-b862-47d9603cc9b3",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On récupère les données de chaque signature\nconst itemsOut = [];\n\nfor (const item of items) {\n  const nom = item.json.Name || \"SansNom\";\n  const nomFichier = nom.replace(/\\s+/g, \"\") + \".html\"; // supprime les espaces\n  const contenuHTML = item.json.signatureHTML || \"\";\n\n  itemsOut.push({\n    json: {\n      nomFichier,\n      nom,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuHTML, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: nomFichier,\n      },\n    },\n  });\n}\n\nreturn itemsOut;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        576
+      ],
+      "id": "d3e7ba6b-2731-4c56-80bc-60d7096f4940",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "let contenuTotal = `\n<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Signatures Materauto</title>\n<style>\n  body {\n    font-family: Arial, sans-serif;\n    margin: 20px;\n    background-color: #1e1e1e;\n    color: #ddd;\n  }\n  h1 { color: #fff; }\n  .card {\n    background: #2b2b2b;\n    border-radius: 10px;\n    padding: 20px;\n    margin-bottom: 20px;\n    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n  }\n  .card h2 { font-size: 18px; color: #fff; margin-bottom: 10px; }\n  .info { color: #f88; font-weight: bold; margin-bottom: 8px; }\n  .filename { font-size: 14px; color: #ccc; margin-bottom: 10px; }\n  .btn {\n    display: inline-block;\n    background: #444;\n    color: #fff;\n    border: 1px solid #666;\n    border-radius: 5px;\n    padding: 6px 14px;\n    text-decoration: none;\n    cursor: pointer;\n    font-size: 14px;\n  }\n  .btn:hover { background: #666; }\n  .preview {\n    margin-top: 15px;\n    background: #fff;\n    color: #000;\n    border-radius: 6px;\n    padding: 10px;\n  }\n  .badge {\n    display:inline-block;\n    width:28px;height:28px;\n    border-radius:6px;\n    background:#cfcfcf;color:#000;\n    text-align:center;line-height:28px;margin-right:10px;font-weight:bold;\n  }\n</style>\n</head>\n<body>\n<h1>\\uD83D\\uDCC4 Liste des signatures MatezAuto</h1>\n<p>Chaque carte correspond à une signature. Clique sur “Télécharger” pour récupérer la signature au format HTML.</p>\n<input type=\"text\" id=\"searchBar\" placeholder=\"🔍 Rechercher une personne...\"\n       oninput=\"searchCards()\"\n       style=\"width:80%; padding:10px; border-radius:6px; border:1px solid #555;\n              background:#2b2b2b; color:#fff; margin-bottom:20px; font-size:16px;\">\n<div id=\"noResults\" style=\"\n  display:none;\n  color:#ff6666;\n  font-size:18px;\n  font-weight:bold;\n  margin-top:10px;\n\">\n  ❌ Aucune signature / email correspondant\n</div>\n\n<hr>\n<script>\n  // télécharge un fichier HTML à partir d'un nom et d'un contenu (string)\n  function downloadHTML(name, content) {\n    const blob = new Blob([content], { type: 'text/html' });\n    const link = document.createElement('a');\n    link.href = URL.createObjectURL(blob);\n    link.download = name + '.html';\n    document.body.appendChild(link);\n    link.click();\n    link.remove();\n  }\n  \n //code pour faire une recherche\n function searchCards() {\n  const input = document.getElementById(\"searchBar\").value.toLowerCase();\n  const cards = document.querySelectorAll(\".card\");\n  let visibleCount = 0;\n\n  cards.forEach(card => {\n    const text = card.innerText.toLowerCase();\n    const match = text.includes(input);\n\n    card.style.display = match ? \"block\" : \"none\";\n\n    if (match) visibleCount++;\n  });\n\n  // si aucune carte n'est visible → afficher le message\n  document.getElementById(\"noResults\").style.display =\n    visibleCount === 0 ? \"block\" : \"none\";\n}\n  // lit les data-attributes du bouton: data-name et data-content (base64),\n  // décode le contenu et déclenche downloadHTML\n  function downloadFromData(btn) {\n    try {\n      const name = btn.getAttribute('data-name') || 'signature';\n      const b64 = btn.getAttribute('data-content') || '';\n      // atob décode base64 vers chaine UTF-8 byte seq ; on convertit correctement en UTF-8:\n      // méthode simple: decode via atob puis construire string avec percent-encoding\n      const binaryStr = atob(b64);\n      // convertir binaryStr (latin1) en UTF-8 string\n      let utf8str = decodeURIComponent(Array.prototype.map.call(binaryStr, function(c){\n        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);\n      }).join(''));\n      downloadHTML(name, utf8str);\n    } catch (e) {\n      alert('Erreur lors du téléchargement : ' + e.message);\n      console.error(e);\n    }\n  }\n</script>\n`;\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const nom = item.json.nom || item.json.nomFichier || \"Inconnu\";\n  const safeName = nom.replace(/\\s+/g, \"_\").replace(/[\"'<>]/g, \"_\");\n  const fileName = item.json.nomFichier || safeName + \".html\";\n  const html = Buffer.from(item.binary.data.data, \"base64\").toString(\"utf-8\");\n  // encode le HTML en base64 pour le stocker dans data-content (sécurisé pour attribut)\n  const b64 = Buffer.from(html, \"utf-8\").toString(\"base64\");\n\n  contenuTotal += `\n  <div class=\"card\">\n    <div style=\"display:flex; align-items:center; justify-content:space-between;\">\n      <div style=\"display:flex; align-items:center;\">\n        <div class=\"badge\">${i + 1}</div>\n        <div>\n          <div style=\"color:#f88; font-weight:bold; margin-bottom:6px;\">données</div>\n          <div class=\"filename\">\n            Nom de fichier: <strong>${fileName}</strong><br>\n            Type MIME : <span>texte/html</span>\n          </div>\n        </div>\n      </div>\n      <div>\n        <button class=\"btn\" data-name=\"${safeName}\" data-content=\"${b64}\" onclick=\"downloadFromData(this)\">Télécharger</button>\n      </div>\n    </div>\n    <div class=\"preview\">${html}</div>\n  </div>\n  `;\n}\n\ncontenuTotal += `\n</body>\n</html>\n`;\n\n// retourne le HTML en binaire pour le nœud suivant\nreturn [\n  {\n    json: {\n      message:\n        \"Signatures affichées sous forme de cartes avec bouton Télécharger\",\n      totalFiles: items.length,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuTotal, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: \"Signatures_MateZauto.html\",\n      },\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        576
+      ],
+      "id": "f52fab49-c2f8-4762-8d68-9dc9a3716634",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "operation": "compress",
+        "fileName": "data",
+        "binaryPropertyOutput": "Signature_email_complete_nonBloque"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        2704,
+        576
+      ],
+      "id": "b0f6915f-8ec0-4712-9186-98bad5da2272",
+      "name": "Compression1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On prépare la liste des résultats\nconst output = [];\n\n// --- On récupère le code HTML du modèle depuis les noeuds précédents ---\nconst model1Html = $node[\"Extrait du fichier Model_M1_KV\"].json[\"Code_Model_1\"];\nconst model2Html = $node[\"Extrait du fichier Model_M2_KV\"].json[\"Code_Model_2\"];\nconst model3Html = $node[\"Extrait du fichier Model_M3_KV\"].json[\"Code_Model_3\"];\nconst model4Html = $node[\"Extrait du fichier Model_M4_KV\"].json[\"Code_Model_4\"];\n\n// --- Boucle sur toutes les lignes du Google Sheet (déjà filtrées par Switch) ---\nfor (let i = 0; i < items.length; i++) {\n  const data = items[i].json;\n\n  // --- Récupération des colonnes ---\n  const photo = data[\"photo_url\"];\n  const Name = data[\"nom-complet\"];\n  const poste = data[\"poste\"];\n  const telephone = data[\"telephone\"];\n  const whatsapp =  data[\"whatsapp\"];\n  const email = data[\"email\"];\n  const modele = data[\"modele\"] ;\n\n  let html = \"\";\n\n  // --- Switch selon le modèle ---\n  switch (modele) {\n    case \"Model 1\":\n      html = model1Html;\n      break;\n    case \"Model 2\":\n      html = model2Html;\n      break;\n    case \"Model 3\":\n      html = model3Html;\n      break;\n    case \"Model 4\":\n      html = model4Html;\n      break;\n    default:\n      html = `⚠️ ${Name} : modèle non reconnu (\"${modele}\")`;\n  }\n\n  // --- Remplacement des variables dynamiques ---\n  html = html\n    .replaceAll(\"${nom_personnel}\", Name)\n    .replaceAll(\"${telephone}\", telephone)\n    .replaceAll(\"${whatsapp}\", whatsapp)\n    .replaceAll(\"${email}\", email)\n    .replaceAll(\"${poste}\", poste)\n    .replaceAll(\"${photo_url}\", photo);\n\n  // --- Ajout du résultat final ---\n  output.push({\n    json: {\n      ligne: i + 1,\n      Name,\n      modele,\n      signatureHTML: html\n    }\n  });\n}\n\n// --- On retourne toutes les signatures ---\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        192
+      ],
+      "id": "3f9b755e-915c-4124-a5b6-85236438e13a",
+      "name": "Code in JavaScript6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On récupère les données de chaque signature\nconst itemsOut = [];\n\nfor (const item of items) {\n  const nom = item.json.Name || \"SansNom\";\n  const nomFichier = nom.replace(/\\s+/g, \"\") + \".html\"; // supprime les espaces\n  const contenuHTML = item.json.signatureHTML || \"\";\n\n  itemsOut.push({\n    json: {\n      nomFichier,\n      nom,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuHTML, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: nomFichier,\n      },\n    },\n  });\n}\n\nreturn itemsOut;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        192
+      ],
+      "id": "1c2cd5ff-5a64-4885-8fdd-e9cc7787c087",
+      "name": "Code in JavaScript7"
+    },
+    {
+      "parameters": {
+        "jsCode": "let contenuTotal = `\n<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Signatures Materauto</title>\n<style>\n  body {\n    font-family: Arial, sans-serif;\n    margin: 20px;\n    background-color: #1e1e1e;\n    color: #ddd;\n  }\n  h1 { color: #fff; }\n  .card {\n    background: #2b2b2b;\n    border-radius: 10px;\n    padding: 20px;\n    margin-bottom: 20px;\n    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n  }\n  .card h2 { font-size: 18px; color: #fff; margin-bottom: 10px; }\n  .info { color: #f88; font-weight: bold; margin-bottom: 8px; }\n  .filename { font-size: 14px; color: #ccc; margin-bottom: 10px; }\n  .btn {\n    display: inline-block;\n    background: #444;\n    color: #fff;\n    border: 1px solid #666;\n    border-radius: 5px;\n    padding: 6px 14px;\n    text-decoration: none;\n    cursor: pointer;\n    font-size: 14px;\n  }\n  .btn:hover { background: #666; }\n  .preview {\n    margin-top: 15px;\n    background: #fff;\n    color: #000;\n    border-radius: 6px;\n    padding: 10px;\n  }\n  .badge {\n    display:inline-block;\n    width:28px;height:28px;\n    border-radius:6px;\n    background:#cfcfcf;color:#000;\n    text-align:center;line-height:28px;margin-right:10px;font-weight:bold;\n  }\n</style>\n</head>\n<body>\n<h1>\\uD83D\\uDCC4 Liste des signatures Kavo PARTS</h1>\n<input type=\"text\" id=\"searchBar\" placeholder=\"🔍 Rechercher une personne...\"\n       oninput=\"searchCards()\"\n       style=\"width:80%; padding:10px; border-radius:6px; border:1px solid #555;\n              background:#2b2b2b; color:#fff; margin-bottom:20px; font-size:16px;\">\n<div id=\"noResults\" style=\"\n  display:none;\n  color:#ff6666;\n  font-size:18px;\n  font-weight:bold;\n  margin-top:10px;\n\">\n  ❌ Aucune signature / email correspondant\n</div>\n<p>Chaque carte correspond à une signature. Clique sur “Télécharger” pour récupérer la signature au format HTML.</p>\n<hr>\n<script>\n  // télécharge un fichier HTML à partir d'un nom et d'un contenu (string)\n  function downloadHTML(name, content) {\n    const blob = new Blob([content], { type: 'text/html' });\n    const link = document.createElement('a');\n    link.href = URL.createObjectURL(blob);\n    link.download = name + '.html';\n    document.body.appendChild(link);\n    link.click();\n    link.remove();\n  }\n   //code pour faire une recherche\n function searchCards() {\n  const input = document.getElementById(\"searchBar\").value.toLowerCase();\n  const cards = document.querySelectorAll(\".card\");\n  let visibleCount = 0;\n\n  cards.forEach(card => {\n    const text = card.innerText.toLowerCase();\n    const match = text.includes(input);\n\n    card.style.display = match ? \"block\" : \"none\";\n\n    if (match) visibleCount++;\n  });\n\n  // si aucune carte n'est visible → afficher le message\n  document.getElementById(\"noResults\").style.display =\n    visibleCount === 0 ? \"block\" : \"none\";\n}\n  // lit les data-attributes du bouton: data-name et data-content (base64),\n  // décode le contenu et déclenche downloadHTML\n  function downloadFromData(btn) {\n    try {\n      const name = btn.getAttribute('data-name') || 'signature';\n      const b64 = btn.getAttribute('data-content') || '';\n      // atob décode base64 vers chaine UTF-8 byte seq ; on convertit correctement en UTF-8:\n      // méthode simple: decode via atob puis construire string avec percent-encoding\n      const binaryStr = atob(b64);\n      // convertir binaryStr (latin1) en UTF-8 string\n      let utf8str = decodeURIComponent(Array.prototype.map.call(binaryStr, function(c){\n        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);\n      }).join(''));\n      downloadHTML(name, utf8str);\n    } catch (e) {\n      alert('Erreur lors du téléchargement : ' + e.message);\n      console.error(e);\n    }\n  }\n</script>\n`;\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const nom = item.json.nom || item.json.nomFichier || \"Inconnu\";\n  const safeName = nom.replace(/\\s+/g, \"_\").replace(/[\"'<>]/g, \"_\");\n  const fileName = item.json.nomFichier || safeName + \".html\";\n  const html = Buffer.from(item.binary.data.data, \"base64\").toString(\"utf-8\");\n  // encode le HTML en base64 pour le stocker dans data-content (sécurisé pour attribut)\n  const b64 = Buffer.from(html, \"utf-8\").toString(\"base64\");\n\n  contenuTotal += `\n  <div class=\"card\">\n    <div style=\"display:flex; align-items:center; justify-content:space-between;\">\n      <div style=\"display:flex; align-items:center;\">\n        <div class=\"badge\">${i + 1}</div>\n        <div>\n          <div style=\"color:#f88; font-weight:bold; margin-bottom:6px;\">données</div>\n          <div class=\"filename\">\n            Nom de fichier: <strong>${fileName}</strong><br>\n            Type MIME : <span>texte/html</span>\n          </div>\n        </div>\n      </div>\n      <div>\n        <button class=\"btn\" data-name=\"${safeName}\" data-content=\"${b64}\" onclick=\"downloadFromData(this)\">Télécharger</button>\n      </div>\n    </div>\n    <div class=\"preview\">${html}</div>\n  </div>\n  `;\n}\n\ncontenuTotal += `\n</body>\n</html>\n`;\n\n// retourne le HTML en binaire pour le nœud suivant\nreturn [\n  {\n    json: {\n      message:\n        \"Signatures affichées sous forme de cartes avec bouton Télécharger\",\n      totalFiles: items.length,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuTotal, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: \"Signatures_Kavo_Parts.html\",\n      },\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        192
+      ],
+      "id": "ab85b49e-02b1-4a9e-bdd5-b7df700a8579",
+      "name": "Code in JavaScript8"
+    },
+    {
+      "parameters": {
+        "sendTo": "angellaraharindriaka@gmail.com",
+        "subject": "Signature e-mail",
+        "emailType": "text",
+        "message": "Bonjour,  Veuillez trouver ci-joint l’ensemble des signatures e-mail créées automatiquement via N8N. Nous vous remercions sincèrement pour votre confiance et votre collaboration tout au long de ce projet.  Nous espérons continuer à travailler avec vous et à développer d’autres automatisations innovantes à l’avenir.",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "Signature_email_complete_nonBloque"
+              }
+            ]
+          },
+          "ccList": ""
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2928,
+        288
+      ],
+      "id": "8f840459-5b08-417a-9b56-90f2a8a4b76c",
+      "name": "Send a message2",
+      "webhookId": "8af137d6-8039-4f2e-b0a0-b1c94b553553",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "myA925JYITs2PM5J",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "compress",
+        "fileName": "data",
+        "binaryPropertyOutput": "Signature_email_complete_nonBloque"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        2704,
+        192
+      ],
+      "id": "0d83a694-f52f-4136-ac8f-81808b9cc6a8",
+      "name": "Compression2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On prépare la liste des résultats\nconst output = [];\n\n// --- On récupère le code HTML du modèle depuis les noeuds précédents ---\nconst model1Html = $node[\"Extrait du fichier Model_M1_QL\"].json[\"Code_Model_1\"];\nconst model2Html = $node[\"Extrait du fichier Model_M2_QL\"].json[\"Code_Model_2\"];\nconst model3Html = $node[\"Extrait du fichier Model_M3_QL\"].json[\"Code_Model_3\"];\nconst model4Html = $node[\"Extrait du fichier Model_M4_QL\"].json[\"Code_Model_4\"];\n\n// --- Boucle sur toutes les lignes du Google Sheet (déjà filtrées par Switch) ---\nfor (let i = 0; i < items.length; i++) {\n  const data = items[i].json;\n\n  // --- Récupération des colonnes ---\n  const photo = data[\"photo_url\"];\n  const Name = data[\"nom-complet\"];\n  const poste = data[\"poste\"];\n  const telephone = data[\"telephone\"];\n  const whatsapp =  data[\"whatsapp\"];\n  const email = data[\"email\"];\n  const modele = data[\"modele\"] ;\n\n  let html = \"\";\n\n  // --- Switch selon le modèle ---\n  switch (modele) {\n    case \"Model 1\":\n      html = model1Html;\n      break;\n    case \"Model 2\":\n      html = model2Html;\n      break;\n    case \"Model 3\":\n      html = model3Html;\n      break;\n    case \"Model 4\":\n      html = model4Html;\n      break;\n    default:\n      html = `⚠️ ${Name} : modèle non reconnu (\"${modele}\")`;\n  }\n\n  // --- Remplacement des variables dynamiques ---\n  html = html\n    .replaceAll(\"${nom_personnel}\", Name)\n    .replaceAll(\"${telephone}\", telephone)\n    .replaceAll(\"${whatsapp}\", whatsapp)\n    .replaceAll(\"${email}\", email)\n    .replaceAll(\"${poste}\", poste)\n    .replaceAll(\"${photo_url}\", photo);\n\n  // --- Ajout du résultat final ---\n  output.push({\n    json: {\n      ligne: i + 1,\n      Name,\n      modele,\n      signatureHTML: html\n    }\n  });\n}\n\n// --- On retourne toutes les signatures ---\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        384
+      ],
+      "id": "48c2fdce-d913-4269-ac02-ee94d24474ab",
+      "name": "Code in JavaScript9"
+    },
+    {
+      "parameters": {
+        "jsCode": "// On récupère les données de chaque signature\nconst itemsOut = [];\n\nfor (const item of items) {\n  const nom = item.json.Name || \"SansNom\";\n  const nomFichier = nom.replace(/\\s+/g, \"\") + \".html\"; // supprime les espaces\n  const contenuHTML = item.json.signatureHTML || \"\";\n\n  itemsOut.push({\n    json: {\n      nomFichier,\n      nom,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuHTML, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: nomFichier,\n      },\n    },\n  });\n}\n\nreturn itemsOut;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        384
+      ],
+      "id": "3a189281-1eba-4d9d-ad46-e78362e2526c",
+      "name": "Code in JavaScript10"
+    },
+    {
+      "parameters": {
+        "jsCode": "let contenuTotal = `\n<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Signatures Materauto</title>\n<style>\n  body {\n    font-family: Arial, sans-serif;\n    margin: 20px;\n    background-color: #1e1e1e;\n    color: #ddd;\n  }\n  h1 { color: #fff; }\n  .card {\n    background: #2b2b2b;\n    border-radius: 10px;\n    padding: 20px;\n    margin-bottom: 20px;\n    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n  }\n  .card h2 { font-size: 18px; color: #fff; margin-bottom: 10px; }\n  .info { color: #f88; font-weight: bold; margin-bottom: 8px; }\n  .filename { font-size: 14px; color: #ccc; margin-bottom: 10px; }\n  .btn {\n    display: inline-block;\n    background: #444;\n    color: #fff;\n    border: 1px solid #666;\n    border-radius: 5px;\n    padding: 6px 14px;\n    text-decoration: none;\n    cursor: pointer;\n    font-size: 14px;\n  }\n  .btn:hover { background: #666; }\n  .preview {\n    margin-top: 15px;\n    background: #fff;\n    color: #000;\n    border-radius: 6px;\n    padding: 10px;\n  }\n  .badge {\n    display:inline-block;\n    width:28px;height:28px;\n    border-radius:6px;\n    background:#cfcfcf;color:#000;\n    text-align:center;line-height:28px;margin-right:10px;font-weight:bold;\n  }\n</style>\n</head>\n<body>\n<h1>\\uD83D\\uDCC4 Liste des signatures Quick Lane</h1>\n<p>Chaque carte correspond à une signature. Clique sur “Télécharger” pour récupérer la signature au format HTML.</p>\n<input type=\"text\" id=\"searchBar\" placeholder=\"🔍 Rechercher une personne...\"\n       oninput=\"searchCards()\"\n       style=\"width:80%; padding:10px; border-radius:6px; border:1px solid #555;\n              background:#2b2b2b; color:#fff; margin-bottom:20px; font-size:16px;\">\n<div id=\"noResults\" style=\"\n  display:none;\n  color:#ff6666;\n  font-size:18px;\n  font-weight:bold;\n  margin-top:10px;\n\">\n  ❌ Aucune signature / email correspondant\n</div>\n\n<hr>\n<script>\n  // télécharge un fichier HTML à partir d'un nom et d'un contenu (string)\n  function downloadHTML(name, content) {\n    const blob = new Blob([content], { type: 'text/html' });\n    const link = document.createElement('a');\n    link.href = URL.createObjectURL(blob);\n    link.download = name + '.html';\n    document.body.appendChild(link);\n    link.click();\n    link.remove();\n  }\n   //code pour faire une recherche\n function searchCards() {\n  const input = document.getElementById(\"searchBar\").value.toLowerCase();\n  const cards = document.querySelectorAll(\".card\");\n  let visibleCount = 0;\n\n  cards.forEach(card => {\n    const text = card.innerText.toLowerCase();\n    const match = text.includes(input);\n\n    card.style.display = match ? \"block\" : \"none\";\n\n    if (match) visibleCount++;\n  });\n\n  // si aucune carte n'est visible → afficher le message\n  document.getElementById(\"noResults\").style.display =\n    visibleCount === 0 ? \"block\" : \"none\";\n}\n  // lit les data-attributes du bouton: data-name et data-content (base64),\n  // décode le contenu et déclenche downloadHTML\n  function downloadFromData(btn) {\n    try {\n      const name = btn.getAttribute('data-name') || 'signature';\n      const b64 = btn.getAttribute('data-content') || '';\n      // atob décode base64 vers chaine UTF-8 byte seq ; on convertit correctement en UTF-8:\n      // méthode simple: decode via atob puis construire string avec percent-encoding\n      const binaryStr = atob(b64);\n      // convertir binaryStr (latin1) en UTF-8 string\n      let utf8str = decodeURIComponent(Array.prototype.map.call(binaryStr, function(c){\n        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);\n      }).join(''));\n      downloadHTML(name, utf8str);\n    } catch (e) {\n      alert('Erreur lors du téléchargement : ' + e.message);\n      console.error(e);\n    }\n  }\n</script>\n`;\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const nom = item.json.nom || item.json.nomFichier || \"Inconnu\";\n  const safeName = nom.replace(/\\s+/g, \"_\").replace(/[\"'<>]/g, \"_\");\n  const fileName = item.json.nomFichier || safeName + \".html\";\n  const html = Buffer.from(item.binary.data.data, \"base64\").toString(\"utf-8\");\n  // encode le HTML en base64 pour le stocker dans data-content (sécurisé pour attribut)\n  const b64 = Buffer.from(html, \"utf-8\").toString(\"base64\");\n\n  contenuTotal += `\n  <div class=\"card\">\n    <div style=\"display:flex; align-items:center; justify-content:space-between;\">\n      <div style=\"display:flex; align-items:center;\">\n        <div class=\"badge\">${i + 1}</div>\n        <div>\n          <div style=\"color:#f88; font-weight:bold; margin-bottom:6px;\">données</div>\n          <div class=\"filename\">\n            Nom de fichier: <strong>${fileName}</strong><br>\n            Type MIME : <span>texte/html</span>\n          </div>\n        </div>\n      </div>\n      <div>\n        <button class=\"btn\" data-name=\"${safeName}\" data-content=\"${b64}\" onclick=\"downloadFromData(this)\">Télécharger</button>\n      </div>\n    </div>\n    <div class=\"preview\">${html}</div>\n  </div>\n  `;\n}\n\ncontenuTotal += `\n</body>\n</html>\n`;\n\n// retourne le HTML en binaire pour le nœud suivant\nreturn [\n  {\n    json: {\n      message:\n        \"Signatures affichées sous forme de cartes avec bouton Télécharger\",\n      totalFiles: items.length,\n    },\n    binary: {\n      data: {\n        data: Buffer.from(contenuTotal, \"utf-8\").toString(\"base64\"),\n        mimeType: \"text/html\",\n        fileName: \"Signatures_Quick_Line.html\",\n      },\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        384
+      ],
+      "id": "e5c48f24-ac5b-4233-866a-19ccfcd325d6",
+      "name": "Code in JavaScript11"
+    },
+    {
+      "parameters": {
+        "operation": "compress",
+        "fileName": "data",
+        "binaryPropertyOutput": "Signature_email_complete_nonBloque"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        2704,
+        384
+      ],
+      "id": "6e5089c5-3e31-4413-86cc-1c928458e4f7",
+      "name": "Compression3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        288
+      ],
+      "id": "e6d64549-5309-4854-923e-727db0d3344b",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "16yDLhzg02EWwUSfwvGNpJoXvyZe0QAEZ5Incm0Ftm5g",
+          "mode": "list",
+          "cachedResultName": "Liste_des_personnel MaterAuto",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16yDLhzg02EWwUSfwvGNpJoXvyZe0QAEZ5Incm0Ftm5g/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feuille 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16yDLhzg02EWwUSfwvGNpJoXvyZe0QAEZ5Incm0Ftm5g/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1808,
+        0
+      ],
+      "id": "d1412881-4a7f-4890-b1a1-90b4eb39232b",
+      "name": "Liste des MTO",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "kphjma3Cnr9zGNoI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1FNTIvZetWAqiGx9EeNNsJR322gqj1c4yCV9aPmeJCU0",
+          "mode": "list",
+          "cachedResultName": "Liste des personnels MatezAuto",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1FNTIvZetWAqiGx9EeNNsJR322gqj1c4yCV9aPmeJCU0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feuille 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1FNTIvZetWAqiGx9EeNNsJR322gqj1c4yCV9aPmeJCU0/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1808,
+        576
+      ],
+      "id": "3e9dd9dd-26a6-448a-9171-62e07bcc82ef",
+      "name": "Liste MateZauto",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "kphjma3Cnr9zGNoI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1GEcbLEFBdZjSbB-AKfiDJKI_InNxCQnPYmYGdQl7zU8",
+          "mode": "list",
+          "cachedResultName": "Liste des personnels de Kavo parts",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1GEcbLEFBdZjSbB-AKfiDJKI_InNxCQnPYmYGdQl7zU8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feuille 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1GEcbLEFBdZjSbB-AKfiDJKI_InNxCQnPYmYGdQl7zU8/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1808,
+        192
+      ],
+      "id": "84b005e5-0133-44ba-ac42-dbd19aa58a98",
+      "name": "Liste Kavo PARTS",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "kphjma3Cnr9zGNoI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1vfSx6luYPIryn07pxoPyNGQFH5XASsC44CaC1cKtt_Y",
+          "mode": "list",
+          "cachedResultName": "Liste des personnels Quick Lane",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vfSx6luYPIryn07pxoPyNGQFH5XASsC44CaC1cKtt_Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feuille 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vfSx6luYPIryn07pxoPyNGQFH5XASsC44CaC1cKtt_Y/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1808,
+        384
+      ],
+      "id": "cdaddf3d-e454-4fcc-b4c6-4f300543c260",
+      "name": "Liste QL",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "kphjma3Cnr9zGNoI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1W6mDBEUAjEeMu8VRXVnkMI_RXw3CPXms",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M1_KV.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1W6mDBEUAjEeMu8VRXVnkMI_RXw3CPXms/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        16,
+        192
+      ],
+      "id": "37fddde0-5358-4db1-bb04-47f03e2c9456",
+      "name": "Model_M1_KV",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1HpS3FdCJO0ptJm85qLWJ76PSRLRLliZZ",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M2_KV.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1HpS3FdCJO0ptJm85qLWJ76PSRLRLliZZ/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        464,
+        192
+      ],
+      "id": "aec5886a-1b20-45e2-8013-e0030a5a6807",
+      "name": "Model_M2_KV",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        240,
+        192
+      ],
+      "id": "875b0153-9159-462f-872d-a14cbefe4a00",
+      "name": "Extrait du fichier Model_M1_KV"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        688,
+        192
+      ],
+      "id": "692bfabf-56a0-4c79-99d9-d0873944cfdd",
+      "name": "Extrait du fichier Model_M2_KV"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "15PpnMAOu9sor3z8zF4ju8OaIvccLW419",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M3_KV.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/15PpnMAOu9sor3z8zF4ju8OaIvccLW419/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        912,
+        192
+      ],
+      "id": "aa046844-3f9b-41e0-a1e2-bfd2d0f4f7e9",
+      "name": "Model_M3_KV",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        192
+      ],
+      "id": "42297ffa-7335-4ff5-ad2b-20496e08a92f",
+      "name": "Extrait du fichier Model_M3_KV"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1xYKG0ZndCb7tsnp4bZulMpPz12C9ceJf",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M4_KV.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1xYKG0ZndCb7tsnp4bZulMpPz12C9ceJf/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        192
+      ],
+      "id": "9d450b6c-1911-4a53-be75-032ccb36ac15",
+      "name": "Model_M4_KV",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        192
+      ],
+      "id": "ad83f7ba-f463-4179-8d57-0220b9d3a47f",
+      "name": "Extrait du fichier Model_M4_KV"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "17i5jjNlZEKVbDyuH6vfP8YH_FfWFU-vN",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M1_QL.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/17i5jjNlZEKVbDyuH6vfP8YH_FfWFU-vN/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        16,
+        384
+      ],
+      "id": "8148258a-bd4b-429d-918b-c0fde476c729",
+      "name": "Model_M1_QL",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        240,
+        384
+      ],
+      "id": "ba73f2a3-8d64-4c4a-97b5-0f8c57be7eea",
+      "name": "Extrait du fichier Model_M1_QL"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1vN87fzcHcX86IIMdNIFDZf2KW6-9iDO7",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M2_QL.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1vN87fzcHcX86IIMdNIFDZf2KW6-9iDO7/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        464,
+        384
+      ],
+      "id": "ac884dd2-4215-46ee-a2bf-a7f1e0d438d5",
+      "name": "Model_M2_QL",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1MZbSVNdJ9yD0bGkmWZAF4w_lBxVRO7GQ",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M3_QL.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1MZbSVNdJ9yD0bGkmWZAF4w_lBxVRO7GQ/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        912,
+        384
+      ],
+      "id": "20046d3f-604b-422e-ba16-c3d96d107293",
+      "name": "Model_M3_QL",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        384
+      ],
+      "id": "9454c330-9c77-4916-ab06-175dc26a5d66",
+      "name": "Extrait du fichier Model_M3_QL"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "12_ATVwDfr4D1_mH3z4ko5F4ZX2akWa08",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_M4_QL.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/12_ATVwDfr4D1_mH3z4ko5F4ZX2akWa08/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        384
+      ],
+      "id": "78b2db20-b6c3-4243-9103-762ddfae191f",
+      "name": "Model_M4_QL",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "18FttnchCjD3JnFBo6hJuXeEFfEtRbu0g",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_01.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/18FttnchCjD3JnFBo6hJuXeEFfEtRbu0g/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        16,
+        0
+      ],
+      "id": "4dcbbfa7-e1bd-46c7-9f65-6bdc8cbf97b0",
+      "name": "Model_M1_Normal",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ],
+      "id": "ec030e22-7988-4e9b-92e0-2a22a22d79d3",
+      "name": "Extrait du fichier Model_M1_Normal"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1-deBUz5UIsZV5G7J_c9NKY4jcwdGmGmj",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_02.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1-deBUz5UIsZV5G7J_c9NKY4jcwdGmGmj/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        464,
+        0
+      ],
+      "id": "76f71083-422b-4b90-9379-1d9fae64070c",
+      "name": "Model_M2_Normal",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        688,
+        0
+      ],
+      "id": "67a266c1-149e-4396-b572-701f859c5731",
+      "name": "Extrait du fichier Model_M2_Normal"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1OX8thCGEkMrgKYdcHnhAutdV1zd1z21s",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_03.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1OX8thCGEkMrgKYdcHnhAutdV1zd1z21s/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        912,
+        0
+      ],
+      "id": "e0118472-8783-4e0b-a111-44b56774d2b5",
+      "name": "Model_M3_Normal",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        0
+      ],
+      "id": "b77aa5b9-8531-4527-95e3-6293e13f91b6",
+      "name": "Extrait du fichier Model_M3_Normal"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1rNF9Hsu40IqHmannWgfoEXRv-KLlEi-7",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_Model_04.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1rNF9Hsu40IqHmannWgfoEXRv-KLlEi-7/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        0
+      ],
+      "id": "b9dcf066-735c-4907-a435-610645a47d44",
+      "name": "Model_M4_Normal",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        0
+      ],
+      "id": "e57b8e4c-01d5-402b-bdc3-cc221fef23a0",
+      "name": "Extrait du fichier Model_M4_Normal"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1lP8C84Mxtpw1CO-erSp2Xz6tW7FZQKug",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_M1_Matzauto.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1lP8C84Mxtpw1CO-erSp2Xz6tW7FZQKug/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        16,
+        576
+      ],
+      "id": "82751ba4-c6f7-4bd4-aaa4-976516634375",
+      "name": "Model_M1_MatezAuto",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        240,
+        576
+      ],
+      "id": "085207e9-2cad-4090-b1ab-d622e9724aec",
+      "name": "Extrait du fichier Model_M1_MatezAuto"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1VXl_2y5HiQMoYCR2HcWUUb5Frh9yVCIq",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_M2_Matezauto.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1VXl_2y5HiQMoYCR2HcWUUb5Frh9yVCIq/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        464,
+        576
+      ],
+      "id": "edeec0e0-b8bf-4595-9123-5904b0a63bc2",
+      "name": "Model_M2_MatezAuto",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        688,
+        576
+      ],
+      "id": "4203c69c-e029-4f35-820a-d461bdd1af7b",
+      "name": "Extrait du fichier Model_M2_MatezAuto"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1nJhuAH0TGTp2SVHvAIDVwmwKGrFGcr2c",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_M3_Matezauto.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1nJhuAH0TGTp2SVHvAIDVwmwKGrFGcr2c/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        912,
+        576
+      ],
+      "id": "5c5a53a0-44d6-4b74-aa71-d69039e2357b",
+      "name": "Model_M3_MatezAuto",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        576
+      ],
+      "id": "77376a04-554e-47af-9116-7cee970965e9",
+      "name": "Extrait du fichier Model_M3_MatezAuto"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "16w3eb6odI7GCbgqxXVAhOoMx3lLMKvfW",
+          "mode": "list",
+          "cachedResultName": "Signature_Email_M4_Matezauto.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/16w3eb6odI7GCbgqxXVAhOoMx3lLMKvfW/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        576
+      ],
+      "id": "9260e6c5-9964-444b-ba34-d19fc732190b",
+      "name": "Model_M4_MatezAuto",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "sgX6k5dxBkNA6P33",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Ici le code html model 3"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        576
+      ],
+      "id": "8aa40ee3-b864-4ada-a2f1-e2b50baba15a",
+      "name": "Extrait du fichier Model_M4_MatezAuto"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        384
+      ],
+      "id": "734375cd-96d8-4ea3-93d2-71987e7b704c",
+      "name": "Extrait du fichier Model_M4_QL"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "Code_Model_2",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        688,
+        384
+      ],
+      "id": "c18b10c4-489c-4807-ae37-6f87f60cbebb",
+      "name": "Extrait du fichier Model_M2_QL"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Compression",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression": {
+      "main": [
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "Compression1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression1": {
+      "main": [
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript6": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript7": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript8": {
+      "main": [
+        [
+          {
+            "node": "Compression2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression2": {
+      "main": [
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript9": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript10": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript11": {
+      "main": [
+        [
+          {
+            "node": "Compression3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression3": {
+      "main": [
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Model_M1_Normal",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Model_M1_KV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Model_M1_QL",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Model_M1_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liste des MTO": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liste MateZauto": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liste Kavo PARTS": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liste QL": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M1_KV": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M1_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M2_KV": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M2_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M1_KV": {
+      "main": [
+        [
+          {
+            "node": "Model_M2_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M2_KV": {
+      "main": [
+        [
+          {
+            "node": "Model_M3_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M3_KV": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M3_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M3_KV": {
+      "main": [
+        [
+          {
+            "node": "Model_M4_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M4_KV": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M4_KV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M4_KV": {
+      "main": [
+        [
+          {
+            "node": "Liste Kavo PARTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M1_QL": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M1_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M1_QL": {
+      "main": [
+        [
+          {
+            "node": "Model_M2_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M2_QL": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M2_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M3_QL": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M3_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M3_QL": {
+      "main": [
+        [
+          {
+            "node": "Model_M4_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M4_QL": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M4_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M1_Normal": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M1_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M1_Normal": {
+      "main": [
+        [
+          {
+            "node": "Model_M2_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M2_Normal": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M2_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M2_Normal": {
+      "main": [
+        [
+          {
+            "node": "Model_M3_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M3_Normal": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M3_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M3_Normal": {
+      "main": [
+        [
+          {
+            "node": "Model_M4_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M4_Normal": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M4_Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M4_Normal": {
+      "main": [
+        [
+          {
+            "node": "Liste des MTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M1_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M1_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M1_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Model_M2_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M2_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M2_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M2_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Model_M3_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M3_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M3_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M3_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Model_M4_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model_M4_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Extrait du fichier Model_M4_MatezAuto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M4_MatezAuto": {
+      "main": [
+        [
+          {
+            "node": "Liste MateZauto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M4_QL": {
+      "main": [
+        [
+          {
+            "node": "Liste QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrait du fichier Model_M2_QL": {
+      "main": [
+        [
+          {
+            "node": "Model_M3_QL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9f9800d8-3284-40dc-b299-690a29bee4b9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7103f8b237e929d333730da55e30625dfdc43f712935a00a9e5465fb8d4ff9b5"
+  },
+  "id": "bVvOdo7GuSUGWnp8",
+  "tags": []
+}
